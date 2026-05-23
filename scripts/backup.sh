@@ -14,7 +14,7 @@ echo "[BACKUP] Daemon started — backing up $CHECKPOINTS_DIR"
 
 REPO_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: token $GITHUB_TOKEN" \
-    "https://api.github.com/repos/GigaLearnTalos/$REPO_NAME" 2>/dev/null || echo "000")
+    "https://api.github.com/repos/vfxjamer/$REPO_NAME" 2>/dev/null || echo "000")
 
 if [ "$REPO_EXISTS" != "200" ]; then
     echo "[BACKUP] Creating remote repo $REPO_NAME..."
@@ -30,7 +30,7 @@ cd "$CHECKPOINTS_DIR"
 
 if [ ! -d ".git" ]; then
     git init
-    git remote add origin "https://GigaLearnTalos:${GITHUB_TOKEN}@github.com/GigaLearnTalos/$REPO_NAME.git"
+    git remote add origin "https://vfxjamer:${GITHUB_TOKEN}@github.com/vfxjamer/$REPO_NAME.git"
     git checkout -b main
     git config user.email "talos@talonbot.ai"
     git config user.name "Talos Backup"
