@@ -1,0 +1,11 @@
+build/
+checkpoints/
+logs/
+.cmake/
+CMakeCache.txt
+CMakeFiles/
+*.pyc
+__pycache__/
+.vs/
+*.user
+.DS_Store
