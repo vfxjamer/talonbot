@@ -11,11 +11,10 @@ apt-get install -y -qq \
 mkdir -p /workspace/libs
 cd /workspace/libs
 
-# ── Clone GigaLearnCPP ──────────────────────────────────────
-if [ ! -d "GigaLearnCPP" ]; then
-    echo "Cloning GigaLearnCPP..."
-    git clone --recurse-submodules https://github.com/ZealanL/GigaLearnCPP-Leak.git GigaLearnCPP
-fi
+# ── Clone/refresh GigaLearnCPP ─────────────────────────────
+rm -rf GigaLearnCPP
+echo "Cloning GigaLearnCPP..."
+git clone --recurse-submodules https://github.com/ZealanL/GigaLearnCPP-Leak.git GigaLearnCPP
 # Fix case-sensitive include paths (Kaggle Linux filesystem is case-sensitive)
 sed -i 's|#include "../Framework.h"|#include "Framework.h"|' \
     GigaLearnCPP/GigaLearnCPP/RLGymCPP/src/RLGymCPP/CommonValues.h 2>/dev/null || true
@@ -38,12 +37,6 @@ c = c.replace('typename Model*&', 'Model*&')
 with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
-# Fix -fPIC: RocketSim target needs explicit POSITION_INDEPENDENT_CODE
-ROCKET_CMAKE="GigaLearnCPP/GigaLearnCPP/RLGymCPP/RocketSim/CMakeLists.txt"
-if ! grep -q "POSITION_INDEPENDENT_CODE" "$ROCKET_CMAKE" 2>/dev/null; then
-    echo "" >> "$ROCKET_CMAKE"
-    echo 'set_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)' >> "$ROCKET_CMAKE"
-fi
 
 # ── Find Torch cmake path ──────────────────────────────────
 TORCH_DIR=$(python3 -c "
@@ -92,7 +85,7 @@ cd /workspace/libs/GigaLearnCPP
 rm -rf build
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DTorch_DIR="$TORCH_DIR" 2>&1
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -DTorch_DIR="$TORCH_DIR" 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
