@@ -83,7 +83,7 @@ fi
 # ── Build GigaLearnCPP ──────────────────────────────────────
 cd /workspace/libs/GigaLearnCPP
 # Add -fPIC to RocketSim target (must link PIC into shared lib)
-echo 'set_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)' \
+printf '\nset_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)\n' \
     >> GigaLearnCPP/RLGymCPP/RocketSim/CMakeLists.txt
 rm -rf build
 mkdir build
