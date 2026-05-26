@@ -100,8 +100,8 @@ fi
 cd /workspace/libs/GigaLearnCPP
 mkdir -p build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tail -5
-cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1 | tail -10
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON 2>&1
+cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
 echo "GigaLearnCPP: /workspace/libs/GigaLearnCPP"

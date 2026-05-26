@@ -1,58 +1,39 @@
 #!/usr/bin/env bash
 set -e
 
-REPO_NAME="talos-v1-checkpoints"
+DATASET="peroplayer/talon-v1-checkpoints"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CHECKPOINTS_DIR="$PROJECT_DIR/checkpoints"
 
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "[BACKUP] ERROR: GITHUB_TOKEN not set!"
-    exit 1
-fi
-
-echo "[BACKUP] Daemon started — backing up $CHECKPOINTS_DIR"
-
-REPO_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Authorization: token $GITHUB_TOKEN" \
-    "https://api.github.com/repos/vfxjamer/$REPO_NAME" 2>/dev/null || echo "000")
-
-if [ "$REPO_EXISTS" != "200" ]; then
-    echo "[BACKUP] Creating remote repo $REPO_NAME..."
-    curl -s -X POST \
-        -H "Authorization: token $GITHUB_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "{\"name\":\"$REPO_NAME\",\"private\":true}" \
-        "https://api.github.com/user/repos" > /dev/null
-fi
+echo "[BACKUP] Daemon started — backing up to Kaggle dataset $DATASET"
 
 mkdir -p "$CHECKPOINTS_DIR"
-cd "$CHECKPOINTS_DIR"
 
-if [ ! -d ".git" ]; then
-    git init
-    git remote add origin "https://vfxjamer:${GITHUB_TOKEN}@github.com/vfxjamer/$REPO_NAME.git"
-    git checkout -b main
-    git config user.email "talos@talonbot.ai"
-    git config user.name "Talos Backup"
-fi
-
-TOTAL_STEPS=400000000000
+# Ensure dataset-metadata.json exists
+cat > "$CHECKPOINTS_DIR/dataset-metadata.json" << EOF
+{
+  "title": "Talos V1 Checkpoints",
+  "id": "$DATASET",
+  "licenses": [{"name": "CC0-1.0"}]
+}
+EOF
 
 while true; do
-    LATEST_SUBDIR=$(find . -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' 2>/dev/null | sort -n | tail -1)
+    LATEST_SUBDIR=$(find "$CHECKPOINTS_DIR" -maxdepth 1 -type d -name '[0-9]*' -printf '%f\n' 2>/dev/null | sort -n | tail -1)
 
     if [ -n "$LATEST_SUBDIR" ]; then
-        PCT=$(echo "scale=6; $LATEST_SUBDIR * 100 / $TOTAL_STEPS" | bc 2>/dev/null || echo "?")
-        echo "[BACKUP] Step: $LATEST_SUBDIR / $TOTAL_STEPS (${PCT}%)"
+        PCT=$(echo "scale=6; $LATEST_SUBDIR * 100 / 400000000000" | bc 2>/dev/null || echo "?")
+        echo "[BACKUP] Step: $LATEST_SUBDIR / 400000000000 (${PCT}%)"
     fi
 
-    git add -A
-    if git diff --cached --quiet 2>/dev/null; then
-        echo "[BACKUP] No changes to commit."
-    else
-        git commit -m "ckpt $(date -u +%Y-%m-%dT%H:%M:%SZ) step $LATEST_SUBDIR"
-        git push origin main --force 2>&1 | tail -2
+    OUT=$(kaggle datasets version -p "$CHECKPOINTS_DIR" -m "checkpoint" --dir-mode zip 2>&1)
+    if [ $? -eq 0 ]; then
         echo "[BACKUP] Pushed at $(date -u +%H:%M:%S UTC)"
+    elif echo "$OUT" | grep -qi "404\|Not Found"; then
+        kaggle datasets create -p "$CHECKPOINTS_DIR" --public 2>/dev/null || true
+        echo "[BACKUP] Created dataset $DATASET"
+    else
+        echo "[BACKUP] $OUT"
     fi
 
     sleep 3600
