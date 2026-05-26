@@ -4,7 +4,7 @@
 #include <RLGymCPP/Rewards/ZeroSumReward.h>
 #include <RLGymCPP/TerminalConditions/NoTouchCondition.h>
 #include <RLGymCPP/TerminalConditions/GoalScoreCondition.h>
-#include <RLGymCPP/OBSBuilders/DefaultObsPadded.h>
+#include <RLGymCPP/ObsBuilders/DefaultObsPadded.h>
 #include <RLGymCPP/StateSetters/KickoffState.h>
 #include <RLGymCPP/StateSetters/FuzzedKickoffState.h>
 #include <RLGymCPP/StateSetters/RandomState.h>
