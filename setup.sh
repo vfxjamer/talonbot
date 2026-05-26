@@ -82,10 +82,13 @@ fi
 
 # ── Build GigaLearnCPP ──────────────────────────────────────
 cd /workspace/libs/GigaLearnCPP
+# Add -fPIC to RocketSim target (must link PIC into shared lib)
+echo 'set_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)' \
+    >> GigaLearnCPP/RLGymCPP/RocketSim/CMakeLists.txt
 rm -rf build
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -DTorch_DIR="$TORCH_DIR" 2>&1
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
