@@ -21,6 +21,23 @@ sed -i 's|#include "../Framework.h"|#include "Framework.h"|' \
     GigaLearnCPP/GigaLearnCPP/RLGymCPP/src/RLGymCPP/CommonValues.h 2>/dev/null || true
 sed -i 's|#include "../OBSBuilders/OBSBuilder.h"|#include "../ObsBuilders/ObsBuilder.h"|' \
     GigaLearnCPP/GigaLearnCPP/RLGymCPP/src/RLGymCPP/EnvSet/EnvSet.h 2>/dev/null || true
+# Fix C++20: high_resolution_clock != steady_clock on GCC
+sed -i 's|std::chrono::high_resolution_clock|std::chrono::steady_clock|g' \
+    GigaLearnCPP/GigaLearnCPP/src/public/GigaLearnCPP/Util/Timer.h 2>/dev/null || true
+# Fix C++20: std::iterator removed + invalid typename usage
+python3 -c "
+import sys
+path = 'GigaLearnCPP/GigaLearnCPP/src/private/GigaLearnCPP/Util/Models.h'
+with open(path) as f:
+    c = f.read()
+c = c.replace(
+    'class ModelIterator : public std::iterator<std::forward_iterator_tag, typename Model*> {',
+    'class ModelIterator {\n\t\tpublic:\n\t\t\tusing iterator_category = std::forward_iterator_tag;\n\t\t\tusing value_type = Model*;\n\t\t\tusing difference_type = std::ptrdiff_t;\n\t\t\tusing pointer = Model**;\n\t\t\tusing reference = Model*&;'
+)
+c = c.replace('typename Model*&', 'Model*&')
+with open(path, 'w') as f:
+    f.write(c)
+" 2>/dev/null || true
 
 # ── Find or download libtorch ───────────────────────────────
 TORCH_TARGET="/workspace/libs/GigaLearnCPP/libtorch"
