@@ -98,7 +98,8 @@ fi
 
 # ── Build GigaLearnCPP ──────────────────────────────────────
 cd /workspace/libs/GigaLearnCPP
-mkdir -p build
+rm -rf build
+mkdir build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
