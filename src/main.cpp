@@ -255,8 +255,7 @@ int main(int argc, char* argv[]) {
 
 	LearnerConfig cfg = {};
 
-	std::string deviceEnv = std::getenv("TALON_DEVICE") ? std::getenv("TALON_DEVICE") : "";
-	cfg.deviceType = (deviceEnv == "CPU") ? LearnerDeviceType::CPU : LearnerDeviceType::GPU_CUDA;
+	cfg.deviceType = LearnerDeviceType::GPU_CUDA;
 	cfg.numGames = 40;
 	cfg.tickSkip = 8;
 	cfg.actionDelay = cfg.tickSkip - 1;
