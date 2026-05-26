@@ -15,10 +15,10 @@ cd /workspace/libs
 if [ ! -d "GigaLearnCPP" ]; then
     echo "Cloning GigaLearnCPP..."
     git clone --recurse-submodules https://github.com/ZealanL/GigaLearnCPP-Leak.git GigaLearnCPP
-    # Fix wrong relative include in CommonValues.h (Framework.h is in same dir)
-    sed -i 's|#include "../Framework.h"|#include "Framework.h"|' \
-        GigaLearnCPP/GigaLearnCPP/RLGymCPP/src/RLGymCPP/CommonValues.h
 fi
+# Fix wrong relative include in CommonValues.h (Framework.h is in same dir)
+sed -i 's|#include "../Framework.h"|#include "Framework.h"|' \
+    GigaLearnCPP/GigaLearnCPP/RLGymCPP/src/RLGymCPP/CommonValues.h 2>/dev/null || true
 
 # ── Find or download libtorch ───────────────────────────────
 TORCH_TARGET="/workspace/libs/GigaLearnCPP/libtorch"
