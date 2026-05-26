@@ -39,47 +39,32 @@ with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
 
-# ── Find or download libtorch ───────────────────────────────
-TORCH_TARGET="/workspace/libs/GigaLearnCPP/libtorch"
-
-if [ ! -d "$TORCH_TARGET" ]; then
-    echo "Looking for system PyTorch (Kaggle has it)..."
-
-    # Detect system torch from Python
-    SYS_TORCH=$(python3 -c "
+# ── Find Torch cmake path ──────────────────────────────────
+TORCH_DIR=$(python3 -c "
 import torch, os
 d = os.path.dirname(torch.__file__)
-print(os.path.join(d, 'share', 'cmake', 'Torch'))
+p = os.path.join(d, 'share', 'cmake', 'Torch')
+if os.path.isfile(os.path.join(p, 'TorchConfig.cmake')):
+    print(p)
+else:
+    print('')
 " 2>/dev/null || echo "")
 
-    if [ -n "$SYS_TORCH" ] && [ -f "$SYS_TORCH/TorchConfig.cmake" ]; then
-        echo "Found system torch at $SYS_TORCH — symlinking..."
-        SYS_TORCH_ROOT=$(python3 -c "
-import torch, os
-print(os.path.dirname(torch.__file__))
-")
-        ln -sfn "$SYS_TORCH_ROOT" "$TORCH_TARGET"
-        echo "Symlinked: $SYS_TORCH_ROOT → $TORCH_TARGET"
+if [ -z "$TORCH_DIR" ]; then
+    echo "Downloading libtorch (~2GB)..."
+    if command -v nvidia-smi &>/dev/null; then
+        URL="https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip"
     else
-        echo "Downloading libtorch (~2GB)..."
-        if command -v nvidia-smi &>/dev/null; then
-            URL="https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip"
-        else
-            URL="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip"
-        fi
-        wget -q --show-progress "$URL" -O /tmp/libt.zip
-        unzip -q /tmp/libt.zip -d /workspace/libs/GigaLearnCPP/
-        rm /tmp/libt.zip
-        echo "libtorch downloaded and extracted."
+        URL="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip"
     fi
+    apt-get install -y -qq wget unzip 2>/dev/null
+    wget -q --show-progress "$URL" -O /tmp/libt.zip
+    unzip -q /tmp/libt.zip -d /workspace/libs/GigaLearnCPP/
+    rm /tmp/libt.zip
+    TORCH_DIR="/workspace/libs/GigaLearnCPP/libtorch/share/cmake/Torch"
 fi
 
-# Verify
-if [ ! -f "$TORCH_TARGET/share/cmake/Torch/TorchConfig.cmake" ] && [ ! -f "$TORCH_TARGET/TorchConfig.cmake" ]; then
-    echo "ERROR: libtorch not found at $TORCH_TARGET"
-    ls "$TORCH_TARGET" 2>/dev/null || echo "(directory missing)"
-    exit 1
-fi
+echo "Torch_DIR: $TORCH_DIR"
 
 # ── Collision meshes ────────────────────────────────────────
 cd /workspace/libs
@@ -101,7 +86,7 @@ cd /workspace/libs/GigaLearnCPP
 rm -rf build
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON 2>&1
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DTorch_DIR="$TORCH_DIR" 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
