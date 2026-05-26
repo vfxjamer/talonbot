@@ -38,6 +38,11 @@ c = c.replace('typename Model*&', 'Model*&')
 with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
+# Fix -fPIC: RocketSim target needs explicit POSITION_INDEPENDENT_CODE
+ROCKET_CMAKE="GigaLearnCPP/GigaLearnCPP/RLGymCPP/RocketSim/CMakeLists.txt"
+if ! grep -q "POSITION_INDEPENDENT_CODE" "$ROCKET_CMAKE" 2>/dev/null; then
+    echo 'set_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)' >> "$ROCKET_CMAKE"
+fi
 
 # ── Find Torch cmake path ──────────────────────────────────
 TORCH_DIR=$(python3 -c "
