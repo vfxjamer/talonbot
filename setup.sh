@@ -77,7 +77,8 @@ sed -i 's/add_library(GigaLearnCPP SHARED/add_library(GigaLearnCPP STATIC/' \
 rm -rf build
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" -DCMAKE_POSITION_INDEPENDENT_CODE=ON 2>&1
+export PATH="/usr/local/cuda/bin:$PATH"
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCUDAToolkit_ROOT=/usr/local/cuda 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
