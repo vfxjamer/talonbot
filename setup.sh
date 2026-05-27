@@ -185,10 +185,15 @@ print(f"Patched {path}")
 PYEOF
 fi
 
+# Kaggle's CMake 3.31 tries CUDA20 dialect during GPU arch detection,
+# but CUDA 11.5 (P100) doesn't support it. Skip detection, set sm_60 manually.
+export TORCH_CUDA_ARCH_LIST="6.0"
+
 cmake .. \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DTorch_DIR="$TORCH_DIR" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=60 \
     -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
     -DCUDAToolkit_ROOT="$CUDA_PATH" \
     -DCUDA_NVCC_EXECUTABLE="$CUDA_PATH/bin/nvcc" \
