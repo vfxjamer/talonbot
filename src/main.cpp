@@ -407,7 +407,7 @@ int main(int argc, char* argv[]) {
     cfg.deviceType  = LearnerDeviceType::GPU_CUDA;
     cfg.tickSkip    = 8;
     cfg.actionDelay = cfg.tickSkip - 1;
-    cfg.numGames    = 64;
+    cfg.numGames    = 32;
 
     cfg.ppo.tsPerItr      = 50000;
     cfg.ppo.miniBatchSize = 10000;
