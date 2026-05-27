@@ -40,31 +40,18 @@ with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
 
-# ── Find Torch cmake path ──────────────────────────────────
-TORCH_DIR=$(python3 -c "
-import torch, os
-d = os.path.dirname(torch.__file__)
-p = os.path.join(d, 'share', 'cmake', 'Torch')
-if os.path.isfile(os.path.join(p, 'TorchConfig.cmake')):
-    print(p)
-else:
-    print('')
-" 2>/dev/null || echo "")
-
-if [ -z "$TORCH_DIR" ]; then
-    echo "Downloading libtorch (~2GB)..."
-    if command -v nvidia-smi &>/dev/null; then
-        URL="https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip"
-    else
-        URL="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip"
-    fi
-    apt-get install -y -qq wget unzip 2>/dev/null
-    wget -q --show-progress "$URL" -O /tmp/libt.zip
-    unzip -q /tmp/libt.zip -d /workspace/libs/GigaLearnCPP/
-    rm /tmp/libt.zip
-    TORCH_DIR="/workspace/libs/GigaLearnCPP/libtorch/share/cmake/Torch"
+# ── Download libtorch (ignore system torch — P100 needs compatible CUDA kernels) ──
+echo "Downloading libtorch (~2GB) for P100 CUDA compatibility..."
+if command -v nvidia-smi &>/dev/null; then
+    URL="https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip"
+else
+    URL="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip"
 fi
-
+apt-get install -y -qq wget unzip 2>/dev/null
+wget -q --show-progress "$URL" -O /tmp/libt.zip
+unzip -q /tmp/libt.zip -d /workspace/libs/
+rm /tmp/libt.zip
+TORCH_DIR="/workspace/libs/libtorch/share/cmake/Torch"
 echo "Torch_DIR: $TORCH_DIR"
 
 # ── Collision meshes (bundled in repo) ──────────────────────
