@@ -39,6 +39,60 @@ c = c.replace('typename Model*&', 'Model*&')
 with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
+# Fix tcsetattr spam on Kaggle (non-TTY stdin) — skip terminal manipulation
+python3 -c "
+path = 'GigaLearnCPP/GigaLearnCPP/src/public/GigaLearnCPP/Util/KeyPressDetector.cpp'
+with open(path) as f:
+    c = f.read()
+old = '''char GGL::KeyPressDetector::GetPressedChar() {
+\t// https://stackoverflow.com/questions/421860/capture-characters-from-standard-input-without-waiting-for-enter-to-be-pressed
+\tchar buf = 0;
+\tstruct termios old = { 0 };
+\tif (tcgetattr(0, &old) < 0)
+\t\tperror(\"tcsetattr()\");
+\told.c_lflag &= ~ICANON;
+\told.c_lflag &= ~ECHO;
+\told.c_cc[VMIN] = 1;
+\told.c_cc[VTIME] = 0;
+\tif (tcsetattr(0, TCSANOW, &old) < 0)
+\t\tperror(\"tcsetattr ICANON\");
+\tif (read(0, &buf, 1) < 0)
+\t\tperror(\"read()\");
+\told.c_lflag |= ICANON;
+\told.c_lflag |= ECHO;
+\tif (tcsetattr(0, TCSADRAIN, &old) < 0)
+\t\tperror(\"tcsetattr ~ICANON\");
+\treturn (buf);
+}'''
+new = '''char GGL::KeyPressDetector::GetPressedChar() {
+\tchar buf = 0;
+\tif (!isatty(STDIN_FILENO)) {
+\t\tif (read(0, &buf, 1) < 0)
+\t\t\tperror(\"read()\");
+\t\treturn buf;
+\t}
+\tstruct termios old = { 0 };
+\tif (tcgetattr(0, &old) < 0)
+\t\tperror(\"tcsetattr()\");
+\told.c_lflag &= ~ICANON;
+\told.c_lflag &= ~ECHO;
+\told.c_cc[VMIN] = 1;
+\told.c_cc[VTIME] = 0;
+\tif (tcsetattr(0, TCSANOW, &old) < 0)
+\t\tperror(\"tcsetattr ICANON\");
+\tif (read(0, &buf, 1) < 0)
+\t\tperror(\"read()\");
+\told.c_lflag |= ICANON;
+\told.c_lflag |= ECHO;
+\tif (tcsetattr(0, TCSADRAIN, &old) < 0)
+\t\tperror(\"tcsetattr ~ICANON\");
+\treturn (buf);
+}'''
+c = c.replace(old, new)
+with open(path, 'w') as f:
+    f.write(c)
+print(f\"Patched {path} — isatty guard added\")
+" 2>/dev/null || true
 
 # ── Install CUDA 12.4 PyTorch with P100 (sm_60) support ──
 echo "Reinstalling PyTorch with CUDA 12.4 (P100 sm_60 kernels)..."
