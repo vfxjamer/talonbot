@@ -77,8 +77,70 @@ sed -i 's/add_library(GigaLearnCPP SHARED/add_library(GigaLearnCPP STATIC/' \
 rm -rf build
 mkdir build
 cd build
-export PATH="/usr/local/cuda/bin:$PATH"
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCUDAToolkit_ROOT=/usr/local/cuda -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda 2>&1
+
+# ── Locate CUDA toolkit (Kaggle P100 has CUDA at /usr/local/cuda or /usr/local/cuda-12) ──
+CUDA_PATH=""
+for p in /usr/local/cuda /usr/local/cuda-12 /usr/local/cuda-12.4; do
+    if [ -f "$p/bin/nvcc" ]; then
+        CUDA_PATH="$p"
+        break
+    fi
+done
+if [ -z "$CUDA_PATH" ]; then
+    echo "CUDA toolkit not found at standard paths. Installing via apt..."
+    apt-get install -y -qq nvidia-cuda-toolkit 2>&1 | tail -3
+    CUDA_PATH="/usr/local/cuda"
+fi
+echo "CUDA toolkit: $CUDA_PATH"
+export PATH="$CUDA_PATH/bin:$PATH"
+
+# ── Patch Caffe2's cuda.cmake: FindCUDA.cmake can't auto-detect ──
+# on Kaggle even with CUDA_TOOLKIT_ROOT_DIR set. We patch it to succeed.
+CUDA_CMAKE="/usr/local/lib/python3.12/dist-packages/torch/share/cmake/Caffe2/public/cuda.cmake"
+if [ -f "$CUDA_CMAKE" ]; then
+    python3 << 'PYEOF'
+import re
+path = "/usr/local/lib/python3.12/dist-packages/torch/share/cmake/Caffe2/public/cuda.cmake"
+cuda_root = "/usr/local/cuda"
+with open(path) as f:
+    c = f.read()
+# Make find_package(CUDA) quiet so it doesn't abort
+c = c.replace("find_package(CUDA)", "find_package(CUDA QUIET)")
+# Replace the 'if not found' block to set variables from our known paths
+old_block = """if(NOT CUDA_FOUND)
+  message(WARNING
+    "Caffe2: CUDA cannot be found. Depending on whether you are building "
+    "Caffe2 or a Caffe2 dependent library, the next warning / error will "
+    "give you more info.")
+  set(CAFFE2_USE_CUDA OFF)
+  return()
+endif()"""
+new_block = f"""if(NOT CUDA_FOUND)
+  set(CUDA_FOUND TRUE)
+  set(CUDA_TOOLKIT_ROOT_DIR "{cuda_root}")
+  set(CUDA_NVCC_EXECUTABLE "{cuda_root}/bin/nvcc")
+  set(CUDA_INCLUDE_DIRS "{cuda_root}/include")
+  set(CUDA_CUDART_LIBRARY "{cuda_root}/lib64/libcudart.so")
+  set(CAFFE2_USE_CUDA ON)
+  message(STATUS "Kaggle patch: CUDA manually set from {cuda_root}")
+endif()"""
+c = c.replace(old_block, new_block)
+with open(path, 'w') as f:
+    f.write(c)
+print(f"Patched {path}")
+PYEOF
+fi
+
+cmake .. \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DTorch_DIR="$TORCH_DIR" \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
+    -DCUDAToolkit_ROOT="$CUDA_PATH" \
+    -DCUDA_NVCC_EXECUTABLE="$CUDA_PATH/bin/nvcc" \
+    -DCUDA_INCLUDE_DIRS="$CUDA_PATH/include" \
+    -DCUDA_CUDART_LIBRARY="$CUDA_PATH/lib64/libcudart.so" \
+    2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
