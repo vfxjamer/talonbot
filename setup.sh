@@ -69,6 +69,11 @@ cd /workspace/libs/GigaLearnCPP
 # Add -fPIC to RocketSim target (must link PIC into shared lib)
 printf '\nset_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE ON)\n' \
     >> GigaLearnCPP/RLGymCPP/RocketSim/CMakeLists.txt
+# Force GigaLearnCPP to STATIC so RocketSim::Init (and all RocketSim symbols)
+# are available when linking TalonBot. SHARED drops object files not referenced
+# by GigaLearnCPP/RLGymCPP, but RocketSim::Init is only called from main.cpp.
+sed -i 's/add_library(GigaLearnCPP SHARED/add_library(GigaLearnCPP STATIC/' \
+    GigaLearnCPP/GigaLearnCPP/CMakeLists.txt
 rm -rf build
 mkdir build
 cd build
