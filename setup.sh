@@ -40,19 +40,23 @@ with open(path, 'w') as f:
     f.write(c)
 " 2>/dev/null || true
 
-# ── Download libtorch (ignore system torch — P100 needs compatible CUDA kernels) ──
-echo "Downloading libtorch (~2GB) for P100 CUDA compatibility..."
-if command -v nvidia-smi &>/dev/null; then
+# ── Install CUDA 12.4 PyTorch with P100 (sm_60) support ──
+echo "Reinstalling PyTorch with CUDA 12.4 (P100 sm_60 kernels)..."
+pip install --force-reinstall torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124 2>&1 | tail -5
+if ! python3 -c "import torch; print(torch.__version__)" 2>/dev/null; then
+    echo "pip reinstall failed. Falling back to libtorch download..."
     URL="https://download.pytorch.org/libtorch/cu124/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcu124.zip"
+    wget -q --show-progress "$URL" -O /tmp/libt.zip
+    unzip -q /tmp/libt.zip -d /workspace/libs/
+    rm /tmp/libt.zip
+    TORCH_DIR="/workspace/libs/libtorch/share/cmake/Torch"
+    echo "Fallback Torch_DIR: $TORCH_DIR"
 else
-    URL="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.5.1%2Bcpu.zip"
+    TORCH_DIR="$(python3 -c "import torch; print(torch.utils.cmake_prefix_path)")/Torch"
+    echo "Torch_DIR: $TORCH_DIR"
 fi
-apt-get install -y -qq wget unzip 2>/dev/null
-wget -q --show-progress "$URL" -O /tmp/libt.zip
-unzip -q /tmp/libt.zip -d /workspace/libs/
-rm /tmp/libt.zip
-TORCH_DIR="/workspace/libs/libtorch/share/cmake/Torch"
-echo "Torch_DIR: $TORCH_DIR"
+# Refresh linker cache so the system knows about the new torch libs
+ldconfig 2>/dev/null || true
 
 # ── Collision meshes (bundled in repo) ──────────────────────
 if [ -d "/kaggle/working/talonbot/collision_meshes" ]; then
