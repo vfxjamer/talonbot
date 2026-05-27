@@ -73,7 +73,7 @@ printf '\nset_target_properties(RocketSim PROPERTIES POSITION_INDEPENDENT_CODE O
 # are available when linking TalonBot. SHARED drops object files not referenced
 # by GigaLearnCPP/RLGymCPP, but RocketSim::Init is only called from main.cpp.
 sed -i 's/add_library(GigaLearnCPP SHARED/add_library(GigaLearnCPP STATIC/' \
-    GigaLearnCPP/GigaLearnCPP/CMakeLists.txt
+    GigaLearnCPP/CMakeLists.txt 2>/dev/null || true
 rm -rf build
 mkdir build
 cd build
