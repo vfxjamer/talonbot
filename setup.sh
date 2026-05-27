@@ -23,6 +23,8 @@ sed -i 's|#include "../OBSBuilders/OBSBuilder.h"|#include "../ObsBuilders/ObsBui
 # Fix C++20: high_resolution_clock != steady_clock on GCC
 sed -i 's|std::chrono::high_resolution_clock|std::chrono::steady_clock|g' \
     GigaLearnCPP/GigaLearnCPP/src/public/GigaLearnCPP/Util/Timer.h 2>/dev/null || true
+# Fix case-sensitive OBSBuilders -> ObsBuilders (Linux)
+ln -sfn ObsBuilders GigaLearnCPP/RLGymCPP/src/RLGymCPP/OBSBuilders 2>/dev/null || true
 # Fix C++20: std::iterator removed + invalid typename usage
 python3 -c "
 import sys
