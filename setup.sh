@@ -78,7 +78,7 @@ rm -rf build
 mkdir build
 cd build
 export PATH="/usr/local/cuda/bin:$PATH"
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCUDAToolkit_ROOT=/usr/local/cuda 2>&1
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTorch_DIR="$TORCH_DIR" -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCUDAToolkit_ROOT=/usr/local/cuda -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda 2>&1
 cmake --build . --config Release --target GigaLearnCPP -j$(nproc) 2>&1
 
 echo "=== Setup complete ==="
