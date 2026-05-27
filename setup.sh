@@ -67,19 +67,10 @@ fi
 
 echo "Torch_DIR: $TORCH_DIR"
 
-# ── Collision meshes ────────────────────────────────────────
-cd /workspace/libs
-if [ ! -d "collision_meshes" ]; then
-    echo "Fetching collision meshes..."
-    git clone --depth 1 https://github.com/ZealanL/RLArenaCollisionDumper.git _mesh 2>/dev/null || true
-    if [ -d "_mesh/collision_meshes" ]; then
-        cp -r _mesh/collision_meshes .
-        rm -rf _mesh
-    else
-        mkdir -p collision_meshes
-        rm -rf _mesh
-        echo "WARNING: collision meshes unavailable — place manually in /workspace/libs/collision_meshes/"
-    fi
+# ── Collision meshes (bundled in repo) ──────────────────────
+if [ -d "/kaggle/working/talonbot/collision_meshes" ]; then
+    mkdir -p /workspace/libs
+    cp -r /kaggle/working/talonbot/collision_meshes /workspace/libs/
 fi
 
 # ── Build GigaLearnCPP ──────────────────────────────────────

@@ -380,7 +380,10 @@ void StepCallback(Learner* learner, const std::vector<GameState>& states, Report
 }
 
 int main(int argc, char* argv[]) {
-    RocketSim::Init("collision_meshes");
+    std::string collisionMeshesPath = "collision_meshes";
+    if (argc > 1)
+        collisionMeshesPath = argv[1];
+    RocketSim::Init(collisionMeshesPath);
 
     g_stats.currentPhase = DetectPhase();
     PhaseConfig& phase   = PHASES[g_stats.currentPhase];
