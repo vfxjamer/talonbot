@@ -148,6 +148,63 @@ fi
 echo "CUDA toolkit: $CUDA_PATH"
 export PATH="$CUDA_PATH/bin:$PATH"
 
+# ── Patch Caffe2's select_compute_arch.cmake: CUDA20 dialect unsupported ──
+# CMake 3.31 tries CUDA20 dialect during GPU arch detection, but CUDA 11.5
+# (P100) doesn't support it. Replace try_run with hardcoded sm_60 return.
+SELECT_ARCH="/usr/local/lib/python3.12/dist-packages/torch/share/cmake/Caffe2/Modules_CUDA_fix/upstream/FindCUDA/select_compute_arch.cmake"
+if [ -f "$SELECT_ARCH" ]; then
+    python3 << 'PYEOF'
+import re
+path = "/usr/local/lib/python3.12/dist-packages/torch/share/cmake/Caffe2/Modules_CUDA_fix/upstream/FindCUDA/select_compute_arch.cmake"
+with open(path) as f:
+    c = f.read()
+# Replace the try_run (which fails on CUDA 11.5 + CMake 3.31) with hardcoded sm_60
+old = """function(CUDA_DETECT_INSTALLED_GPUS)
+  if(NOT CUDA_GPU_DETECT_OUTPUT)
+    set(file ${PROJECT_BINARY_DIR}/detect_cuda_gpus.cpp)
+    file(WRITE ${file} ""
+      "#include <cuda_runtime.h>\\n"
+      "#include <cstdio>\\n"
+      "int main() {\\n"
+      "  int count = 0;\\n"
+      "  if (cudaGetDeviceCount(&count) != cudaSuccess) {\\n"
+      "    return -1;\\n"
+      "  }\\n"
+      "  for (int i = 0; i < count; ++i) {\\n"
+      "    cudaDeviceProp prop;\\n"
+      "    if (cudaGetDeviceProperties(&prop, i) != cudaSuccess) {\\n"
+      "      return -1;\\n"
+      "    }\\n"
+      "    std::printf(\\"%d.%d ", prop.major, prop.minor);\\n"
+      "  }\\n"
+      "  return 0;\\n"
+      "}\\n"
+    )
+    try_run(run_result compile_result ${PROJECT_BINARY_DIR} ${file}
+      CMAKE_FLAGS
+      -DCMAKE_CUDA_STANDARD=${CMAKE_CUDA_STANDARD}
+      -DCMAKE_CUDA_STANDARD_REQUIRED=${CMAKE_CUDA_STANDARD_REQUIRED}
+      -DCMAKE_CUDA_EXTENSIONS=${CMAKE_CUDA_EXTENSIONS}
+      CUDA_SOURCES
+      OUTPUT_VARIABLE output)
+    if(compile_result)
+      set(CUDA_GPU_DETECT_OUTPUT ${run_result}
+        CACHE INTERNAL "Returned GPU architetures from CUDA_DETECT_INSTALLED_GPUS")
+    endif()
+  endif()
+  set(${ARGV0} ${CUDA_GPU_DETECT_OUTPUT} PARENT_SCOPE)
+endfunction()"""
+new = """function(CUDA_DETECT_INSTALLED_GPUS)
+  # Kaggle P100: skip try_run (CMake 3.31 tries CUDA20 dialect which CUDA 11.5 does not support)
+  set(${ARGV0} "6.0" PARENT_SCOPE)
+endfunction()"""
+c = c.replace(old, new)
+with open(path, 'w') as f:
+    f.write(c)
+print(f"Patched {path} — CUDA_DETECT_INSTALLED_GPUS returns sm_60")
+PYEOF
+fi
+
 # ── Patch Caffe2's cuda.cmake: FindCUDA.cmake can't auto-detect ──
 # on Kaggle even with CUDA_TOOLKIT_ROOT_DIR set. We patch it to succeed.
 CUDA_CMAKE="/usr/local/lib/python3.12/dist-packages/torch/share/cmake/Caffe2/public/cuda.cmake"
