@@ -4,30 +4,26 @@
 #include <RLGymCPP/Rewards/ZeroSumReward.h>
 #include <RLGymCPP/TerminalConditions/NoTouchCondition.h>
 #include <RLGymCPP/TerminalConditions/GoalScoreCondition.h>
-#include <RLGymCPP/ObsBuilders/DefaultObsPadded.h>
+#include <RLGymCPP/OBSBuilders/DefaultObsPadded.h>
 #include <RLGymCPP/StateSetters/KickoffState.h>
 #include <RLGymCPP/StateSetters/FuzzedKickoffState.h>
 #include <RLGymCPP/StateSetters/RandomState.h>
 #include <RLGymCPP/StateSetters/CombinedState.h>
 #include <RLGymCPP/ActionParsers/DefaultAction.h>
 
-#include "KickoffReward.h"
-#include "DemoDodgeReward.h"
-#include "PredictiveDefenseReward.h"
-#include "DefenseRotationReward.h"
+#include "V4OutcomeRewards.h"
+#include "V4MechanicsRewards.h"
+#include "V4GameSenseRewards.h"
+#include "V4PenaltyRewards.h"
+#include "V4ComboRewards.h"
 
-#include <filesystem>
-#include <iostream>
+#include <cmath>
 #include <string>
-#include <algorithm>
-#include <cstdlib>
-#include <ctime>
-#include <cstdint>
+#include <vector>
+#include <filesystem>
 
 using namespace GGL;
 using namespace RLGC;
-
-namespace fs = std::filesystem;
 
 static constexpr uint64_t PHASE_2_THRESHOLD = 30'000'000'000ULL;
 static constexpr uint64_t PHASE_3_THRESHOLD = 100'000'000'000ULL;
@@ -35,314 +31,443 @@ static constexpr uint64_t PHASE_4_THRESHOLD = 220'000'000'000ULL;
 static constexpr uint64_t PHASE_5_THRESHOLD = 340'000'000'000ULL;
 static constexpr uint64_t MAX_STEPS = 400'000'000'000ULL;
 
-static int g_detectedPhase = 1;
-
-int DetectPhase(const std::string& checkpointFolder) {
-	uint64_t maxSteps = 0;
-
-	if (fs::exists(checkpointFolder)) {
-		for (auto& entry : fs::directory_iterator(checkpointFolder)) {
-			if (entry.is_directory()) {
-				try {
-					uint64_t steps = std::stoull(entry.path().filename().string());
-					maxSteps = std::max(maxSteps, steps);
-				} catch (...) {}
-			}
-		}
-	}
-
-	if (maxSteps < PHASE_2_THRESHOLD) return 1;
-	if (maxSteps < PHASE_3_THRESHOLD) return 2;
-	if (maxSteps < PHASE_4_THRESHOLD) return 3;
-	if (maxSteps < PHASE_5_THRESHOLD) return 4;
-	return 5;
+int DetectPhase() {
+    uint64_t maxSteps = 0;
+    if (std::filesystem::exists("checkpoints")) {
+        for (auto& entry : std::filesystem::directory_iterator("checkpoints")) {
+            if (entry.is_directory()) {
+                try {
+                    uint64_t steps = std::stoull(entry.path().filename().string());
+                    maxSteps = std::max(maxSteps, steps);
+                } catch (...) {}
+            }
+        }
+    }
+    if (maxSteps < PHASE_2_THRESHOLD) return 1;
+    if (maxSteps < PHASE_3_THRESHOLD) return 2;
+    if (maxSteps < PHASE_4_THRESHOLD) return 3;
+    if (maxSteps < PHASE_5_THRESHOLD) return 4;
+    return 5;
 }
 
-static std::vector<WeightedReward> BuildRewards(int phase) {
-	switch (phase) {
-		case 1:
-			return {
-				{ new KickoffReward(), 5.0f },
-				{ new VelocityPlayerToBallReward(), 2.0f },
-				{ new FaceBallReward(), 1.0f },
-				{ new TouchBallReward(), 4.0f },
-				{ new GoalReward(-1.0f), 60.0f },
-				{ new SaveBoostReward(), 0.3f },
-				{ new ZeroSumReward(new StrongTouchReward(20, 100), 0.5f), 15.0f }
-			};
+struct PhaseConfig {
+    float       gamma;
+    float       entropy;
+    const char* name;
+    const char* description;
+    int64_t     targetSteps;
+};
 
-		case 2:
-			return {
-				{ new KickoffReward(), 1.5f },
-				{ new VelocityPlayerToBallReward(), 1.2f },
-				{ new TouchBallReward(), 3.5f },
-				{ new VelocityReward(), 0.12f },
-				{ new SaveBoostReward(), 0.5f },
-				{ new GoalReward(-1.0f), 100.0f },
-				{ new ZeroSumReward(new StrongTouchReward(20, 100), 0.5f), 40.0f },
-				{ new ZeroSumReward(new VelocityReward(), 0.5f, 0.5f), 6.0f },
-				{ new DemoDodgeReward(), 2.5f },
-				{ new DefenseRotationReward(), 0.2f },
-				{ new PredictiveDefenseReward(), 0.3f }
-			};
+static PhaseConfig PHASES[] = {
+    { 0.0f, 0.0f, "INVALID", "INVALID", 0LL },
 
-		case 3:
-			return {
-				{ new KickoffReward(), 1.0f },
-				{ new VelocityPlayerToBallReward(), 1.0f },
-				{ new TouchBallReward(), 3.0f },
-				{ new AirReward(), 3.0f },
-				{ new VelocityReward(), 0.1f },
-				{ new SaveBoostReward(), 0.4f },
-				{ new GoalReward(-1.0f), 130.0f },
-				{ new ZeroSumReward(new StrongTouchReward(20, 100), 0.5f), 60.0f },
-				{ new ZeroSumReward(new VelocityReward(), 0.5f), 10.0f },
-				{ new DemoDodgeReward(), 1.5f },
-				{ new DefenseRotationReward(), 0.6f },
-				{ new PredictiveDefenseReward(), 0.8f }
-			};
+    { 0.990f, 0.05f,
+      "Phase 1: Kickoffs",
+      "Kickoff wins + ball direction + goals",
+      30'000'000'000LL },
 
-		case 4:
-			return {
-				{ new KickoffReward(), 0.5f },
-				{ new VelocityPlayerToBallReward(), 0.75f },
-				{ new FaceBallReward(), 0.3f },
-				{ new TouchBallReward(), 2.5f },
-				{ new AirReward(), 1.5f },
-				{ new VelocityReward(), 0.1f },
-				{ new SaveBoostReward(), 0.5f },
-				{ new GoalReward(-1.0f), 150.0f },
-				{ new ZeroSumReward(new StrongTouchReward(20, 100), 0.5f), 75.0f },
-				{ new ZeroSumReward(new VelocityReward(), 0.5f), 12.0f },
-				{ new DemoDodgeReward(), 1.2f },
-				{ new PredictiveDefenseReward(), 2.5f },
-				{ new DefenseRotationReward(), 2.0f }
-			};
+    { 0.993f, 0.07f,
+      "Phase 2: Gameplay",
+      "Scoring, saves, demos, mechanics, shadow defense",
+      70'000'000'000LL },
 
-		case 5:
-		default:
-			return {
-				{ new KickoffReward(), 0.5f },
-				{ new VelocityPlayerToBallReward(), 0.75f },
-				{ new FaceBallReward(), 0.3f },
-				{ new TouchBallReward(), 2.5f },
-				{ new AirReward(), 1.5f },
-				{ new VelocityReward(), 0.1f },
-				{ new SaveBoostReward(), 0.5f },
-				{ new GoalReward(-1.0f), 170.0f },
-				{ new ZeroSumReward(new StrongTouchReward(20, 100), 0.5f), 90.0f },
-				{ new ZeroSumReward(new VelocityReward(), 0.5f), 12.0f },
-				{ new DemoDodgeReward(), 1.2f },
-				{ new PredictiveDefenseReward(), 2.5f },
-				{ new DefenseRotationReward(), 2.0f }
-			};
-	}
+    { 0.995f, 0.10f,
+      "Phase 3: Mechanics",
+      "Aerials, air dribbles, redirects, backboard reads",
+      120'000'000'000LL },
+
+    { 0.997f, 0.08f,
+      "Phase 4: Game Sense",
+      "Scaling demos, rotation, read chains",
+      120'000'000'000LL },
+
+    { 0.998f, 0.05f,
+      "Phase 5: Optimization",
+      "Sharpen everything, reduce mistakes, strategic demos",
+      60'000'000'000LL },
+};
+
+std::vector<WeightedReward> GetPhase1Rewards() {
+    return std::vector<WeightedReward>{
+        WeightedReward(new V4GoalReward(80.0f, -60.0f),                             1.0f),
+        WeightedReward(new SaveReward(),                                             30.0f),
+        WeightedReward(new DemoReward(),                                             10.0f),
+        WeightedReward(new OwnGoalReward(),                                          50.0f),
+
+        WeightedReward(new KickoffWinReward(),                                       40.0f),
+        WeightedReward(new DirectionalTouchReward(),                                 8.0f),
+
+        WeightedReward(new WhiffPenalty(),                                           15.0f),
+        WeightedReward(new DriveByWhiffPenalty(),                                    10.0f),
+        WeightedReward(new DemoedPenalty(),                                          10.0f),
+    };
 }
 
-static StateSetter* BuildStateSetter(int phase) {
-	switch (phase) {
-		case 1:
-			return new KickoffState();
+std::vector<WeightedReward> GetPhase2Rewards() {
+    return std::vector<WeightedReward>{
+        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new SaveReward(),                                             50.0f),
+        WeightedReward(new EpicSaveReward(),                                         45.0f),
+        WeightedReward(new AssistReward(),                                           30.0f),
+        WeightedReward(new DemoReward(),                                             10.0f),
+        WeightedReward(new OwnGoalReward(),                                          100.0f),
 
-		case 2:
-			return new CombinedState({
-				{ new KickoffState(), 0.6f },
-				{ new FuzzedKickoffState(), 0.4f }
-			});
+        WeightedReward(new KickoffWinReward(),                                       25.0f),
+        WeightedReward(new DirectionalTouchReward(),                                 8.0f),
+        WeightedReward(new BadTouchReward(),                                         10.0f),
+        WeightedReward(new AerialTouchReward(),                                      10.0f),
 
-		case 3:
-			return new CombinedState({
-				{ new KickoffState(), 0.25f },
-				{ new FuzzedKickoffState(), 0.30f },
-				{ new RandomState(true, true, true), 0.45f }
-			});
+        WeightedReward(new ShadowDefenseReward(),                                    2.0f),
+        WeightedReward(new BoostEfficiencyReward(),                                  1.0f),
+        WeightedReward(new RotationTimingReward(),                                   8.0f),
 
-		case 4:
-		case 5:
-		default:
-			return new CombinedState({
-				{ new KickoffState(), 0.20f },
-				{ new FuzzedKickoffState(), 0.25f },
-				{ new RandomState(true, true, true), 0.55f }
-			});
-	}
+        WeightedReward(new WhiffPenalty(),                                           20.0f),
+        WeightedReward(new DriveByWhiffPenalty(),                                    15.0f),
+        WeightedReward(new BallChasingPenalty(),                                     3.0f),
+        WeightedReward(new DemoedPenalty(),                                          15.0f),
+        WeightedReward(new BoostStarvationPenalty(),                                 1.0f),
+    };
 }
 
-static std::vector<TerminalCondition*> BuildTerminals(int phase) {
-	std::vector<TerminalCondition*> terms = { new GoalScoreCondition() };
+std::vector<WeightedReward> GetPhase3Rewards() {
+    return std::vector<WeightedReward>{
+        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new SaveReward(),                                             50.0f),
+        WeightedReward(new EpicSaveReward(),                                         65.0f),
+        WeightedReward(new AssistReward(),                                           50.0f),
+        WeightedReward(new DemoReward(),                                             10.0f),
+        WeightedReward(new OwnGoalReward(),                                          100.0f),
 
-	switch (phase) {
-		case 1: terms.push_back(new NoTouchCondition(8)); break;
-		case 2: terms.push_back(new NoTouchCondition(12)); break;
-		case 3: terms.push_back(new NoTouchCondition(25)); break;
-		case 4: terms.push_back(new NoTouchCondition(35)); break;
-		case 5: terms.push_back(new NoTouchCondition(45)); break;
-	}
+        WeightedReward(new KickoffWinReward(),                                       15.0f),
+        WeightedReward(new DirectionalTouchReward(),                                 10.0f),
+        WeightedReward(new BadTouchReward(),                                         12.0f),
+        WeightedReward(new AerialTouchReward(),                                      20.0f),
+        WeightedReward(new AirDribbleReward(),                                       15.0f),
+        WeightedReward(new RedirectOnTargetReward(),                                 30.0f),
 
-	return terms;
+        WeightedReward(new ShadowDefenseReward(),                                    2.0f),
+        WeightedReward(new BoostEfficiencyReward(),                                  2.0f),
+        WeightedReward(new RotationTimingReward(),                                   8.0f),
+        WeightedReward(new BackboardReadReward(),                                    20.0f),
+
+        WeightedReward(new WhiffPenalty(),                                           25.0f),
+        WeightedReward(new DriveByWhiffPenalty(),                                    20.0f),
+        WeightedReward(new BallChasingPenalty(),                                     4.0f),
+        WeightedReward(new DemoedPenalty(),                                          20.0f),
+        WeightedReward(new BoostStarvationPenalty(),                                 2.0f),
+
+        WeightedReward(new AerialGoalMultiplierReward(),                             50.0f),
+        WeightedReward(new AirDribbleFlickGoalReward(),                              200.0f),
+    };
+}
+
+std::vector<WeightedReward> GetPhase4Rewards() {
+    return std::vector<WeightedReward>{
+        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new SaveReward(),                                             50.0f),
+        WeightedReward(new EpicSaveReward(),                                         65.0f),
+        WeightedReward(new AssistReward(),                                           50.0f),
+        WeightedReward(new DemoReward(),                                             20.0f),
+        WeightedReward(new OwnGoalReward(),                                          100.0f),
+
+        WeightedReward(new KickoffWinReward(),                                       10.0f),
+        WeightedReward(new DirectionalTouchReward(),                                 8.0f),
+        WeightedReward(new BadTouchReward(),                                         12.0f),
+        WeightedReward(new AerialTouchReward(),                                      20.0f),
+        WeightedReward(new AirDribbleReward(),                                       15.0f),
+        WeightedReward(new RedirectOnTargetReward(),                                 30.0f),
+
+        WeightedReward(new ShadowDefenseReward(),                                    5.0f),
+        WeightedReward(new BoostEfficiencyReward(),                                  3.0f),
+        WeightedReward(new RotationTimingReward(),                                   15.0f),
+        WeightedReward(new BackboardReadReward(),                                    25.0f),
+
+        WeightedReward(new WhiffPenalty(),                                           25.0f),
+        WeightedReward(new DriveByWhiffPenalty(),                                    20.0f),
+        WeightedReward(new BallChasingPenalty(),                                     5.0f),
+        WeightedReward(new DemoedPenalty(),                                          20.0f),
+        WeightedReward(new BoostStarvationPenalty(),                                 3.0f),
+
+        WeightedReward(new AerialGoalMultiplierReward(),                             50.0f),
+        WeightedReward(new AirDribbleFlickGoalReward(),                              200.0f),
+        WeightedReward(new ReadChainReward(),                                        120.0f),
+    };
+}
+
+std::vector<WeightedReward> GetPhase5Rewards() {
+    return std::vector<WeightedReward>{
+        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new SaveReward(),                                             50.0f),
+        WeightedReward(new EpicSaveReward(),                                         65.0f),
+        WeightedReward(new AssistReward(),                                           50.0f),
+        WeightedReward(new DemoReward(),                                             30.0f),
+        WeightedReward(new OwnGoalReward(),                                          100.0f),
+
+        WeightedReward(new KickoffWinReward(),                                       10.0f),
+        WeightedReward(new DirectionalTouchReward(),                                 5.0f),
+        WeightedReward(new BadTouchReward(),                                         15.0f),
+        WeightedReward(new AerialTouchReward(),                                      20.0f),
+        WeightedReward(new AirDribbleReward(),                                       15.0f),
+        WeightedReward(new RedirectOnTargetReward(),                                 30.0f),
+
+        WeightedReward(new ShadowDefenseReward(),                                    5.0f),
+        WeightedReward(new BoostEfficiencyReward(),                                  4.0f),
+        WeightedReward(new RotationTimingReward(),                                   15.0f),
+        WeightedReward(new BackboardReadReward(),                                    25.0f),
+
+        WeightedReward(new WhiffPenalty(),                                           30.0f),
+        WeightedReward(new DriveByWhiffPenalty(),                                    25.0f),
+        WeightedReward(new BallChasingPenalty(),                                     5.0f),
+        WeightedReward(new DemoedPenalty(),                                          20.0f),
+        WeightedReward(new BoostStarvationPenalty(),                                 4.0f),
+
+        WeightedReward(new AerialGoalMultiplierReward(),                             50.0f),
+        WeightedReward(new AirDribbleFlickGoalReward(),                              250.0f),
+        WeightedReward(new ReadChainReward(),                                        150.0f),
+    };
+}
+
+std::vector<TerminalCondition*> GetPhaseTerminals(int phase) {
+    std::vector<TerminalCondition*> conds;
+    switch (phase) {
+        case 1:  conds.push_back(new NoTouchCondition(10)); break;
+        case 2:  conds.push_back(new NoTouchCondition(15)); break;
+        case 3:  conds.push_back(new NoTouchCondition(20)); break;
+        case 4:  conds.push_back(new NoTouchCondition(30)); break;
+        case 5:  conds.push_back(new NoTouchCondition(40)); break;
+        default: conds.push_back(new NoTouchCondition(15)); break;
+    }
+    conds.push_back(new GoalScoreCondition());
+    return conds;
+}
+
+struct TrainingStats {
+    int64_t totalSteps    = 0;
+    int64_t phaseSteps    = 0;
+    int     episodes      = 0;
+    int     currentPhase  = 1;
+
+    float avgGoalsFor     = 0.0f;
+    float avgGoalsAgainst = 0.0f;
+    float avgTouches      = 0.0f;
+    float avgKickoffWins  = 0.0f;
+    float avgDemos        = 0.0f;
+    float avgSaves        = 0.0f;
+};
+
+static TrainingStats g_stats;
+
+StateSetter* GetPhaseStateSetter(int phase) {
+    switch (phase) {
+        case 1:
+            return new KickoffState();
+        case 2: {
+            std::vector<std::pair<StateSetter*, float>> s = {
+                { new KickoffState(),       0.7f },
+                { new FuzzedKickoffState(), 0.3f },
+            };
+            return new CombinedState(s);
+        }
+        case 3:
+        case 4:
+        case 5:
+        default: {
+            std::vector<std::pair<StateSetter*, float>> s = {
+                { new KickoffState(),                0.3f },
+                { new FuzzedKickoffState(),          0.3f },
+                { new RandomState(true, true, true), 0.4f },
+            };
+            return new CombinedState(s);
+        }
+    }
+}
+
+EnvCreateResult EnvCreateFunc(int index) {
+    int phase = g_stats.currentPhase;
+    std::vector<WeightedReward> rewards;
+    switch (phase) {
+        case 1:  rewards = GetPhase1Rewards(); break;
+        case 2:  rewards = GetPhase2Rewards(); break;
+        case 3:  rewards = GetPhase3Rewards(); break;
+        case 4:  rewards = GetPhase4Rewards(); break;
+        case 5:  rewards = GetPhase5Rewards(); break;
+        default: rewards = GetPhase1Rewards(); break;
+    }
+
+    auto terminalConditions = GetPhaseTerminals(phase);
+    auto stateSetter        = GetPhaseStateSetter(phase);
+
+    auto arena = Arena::Create(GameMode::SOCCAR);
+    arena->AddCar(Team::BLUE,   CAR_CONFIG_OCTANE);
+    arena->AddCar(Team::ORANGE, CAR_CONFIG_OCTANE);
+
+    auto obsBuilder   = new DefaultObsPadded(2);
+    auto actionParser = new DefaultAction();
+
+    EnvCreateResult result    = {};
+    result.actionParser       = actionParser;
+    result.obsBuilder         = obsBuilder;
+    result.stateSetter        = stateSetter;
+    result.terminalConditions = terminalConditions;
+    result.rewards            = rewards;
+    result.arena              = arena;
+
+    return result;
 }
 
 void StepCallback(Learner* learner, const std::vector<GameState>& states, Report& report) {
-	static bool milestone30 = false;
-	static bool milestone100 = false;
-	static bool milestone220 = false;
-	static bool milestone340 = false;
+    g_stats.totalSteps += (int64_t)states.size();
+    g_stats.phaseSteps += (int64_t)states.size();
 
-	uint64_t ts = learner->totalTimesteps;
+    PhaseConfig& phase = PHASES[g_stats.currentPhase];
+    if (g_stats.phaseSteps >= phase.targetSteps) {
+        printf("\n");
+        printf("============================================================\n");
+        printf("  >>> Phase %d COMPLETE! <<<\n", g_stats.currentPhase);
+        if (g_stats.currentPhase < 5) {
+            printf("  Next restart will begin Phase %d\n", g_stats.currentPhase + 1);
+        } else {
+            printf("  All 5 phases complete. Bot fully trained.\n");
+        }
+        printf("============================================================\n\n");
+        g_stats.phaseSteps = 0;
+    }
 
-	if (ts >= PHASE_2_THRESHOLD && !milestone30) {
-		RG_LOG("=== PHASE 1 COMPLETE at " << ts << " steps. Beginning Phase 2 (Ground Mechanics) ===");
-		milestone30 = true;
-	}
-	if (ts >= PHASE_3_THRESHOLD && !milestone100) {
-		RG_LOG("=== PHASE 2 COMPLETE at " << ts << " steps. Beginning Phase 3 (Aerial Mechanics) ===");
-		milestone100 = true;
-	}
-	if (ts >= PHASE_4_THRESHOLD && !milestone220) {
-		RG_LOG("=== PHASE 3 COMPLETE at " << ts << " steps. Beginning Phase 4 (Offense & Defense) ===");
-		milestone220 = true;
-	}
-	if (ts >= PHASE_5_THRESHOLD && !milestone340) {
-		RG_LOG("=== PHASE 4 COMPLETE at " << ts << " steps. Beginning Phase 5 (Full Optimization) ===");
-		milestone340 = true;
-	}
+    int goalsFor     = 0;
+    int goalsAgainst = 0;
+    int touches      = 0;
+    int kickoffWins  = 0;
+    int demos        = 0;
+    int saves        = 0;
 
-	for (auto& state : states) {
-		if (state.goalScored) {
-			bool blueScored = state.ball.pos.y > 0;
-			if (blueScored)
-				report.AddAvg("Talon/GoalsScored", 1.0f);
-			else
-				report.AddAvg("Talon/GoalsConceded", 1.0f);
-		}
+    for (auto& state : states) {
+        if (state.goalScored) {
+            if (state.ball.pos.y > 0) goalsFor++;
+            else                       goalsAgainst++;
+        }
 
-		for (auto& player : state.players) {
-			if (player.team != Team::BLUE)
-				continue;
+        for (auto& player : state.players) {
+            if (player.team == Team::BLUE) {
+                if (player.ballTouchedStep) {
+                    touches++;
+                    float ballSpeed = state.ball.vel.Length();
+                    if (ballSpeed < 400.0f)
+                        kickoffWins++;
+                }
+                demos += player.eventState.demo ? 1 : 0;
+                saves += player.eventState.save ? 1 : 0;
+            }
+        }
+    }
 
-			if (player.ballTouchedStep) {
-				report.AddAvg("Talon/BallTouches", 1.0f);
-				if (state.ball.vel.Length() < 400.0f)
-					report.AddAvg("Talon/KickoffWins", 1.0f);
-			}
+    g_stats.episodes++;
+    float n = (float)g_stats.episodes;
+    g_stats.avgGoalsFor     = (g_stats.avgGoalsFor     * (n-1) + goalsFor)     / n;
+    g_stats.avgGoalsAgainst = (g_stats.avgGoalsAgainst * (n-1) + goalsAgainst) / n;
+    g_stats.avgTouches      = (g_stats.avgTouches      * (n-1) + touches)      / n;
+    g_stats.avgKickoffWins  = (g_stats.avgKickoffWins  * (n-1) + kickoffWins)  / n;
+    g_stats.avgDemos        = (g_stats.avgDemos        * (n-1) + demos)        / n;
+    g_stats.avgSaves        = (g_stats.avgSaves        * (n-1) + saves)        / n;
 
-			if (player.eventState.demo)
-				report.AddAvg("Talon/DemosLanded", 1.0f);
-		}
-	}
+    report.AddAvg("Bot/GoalsFor",     g_stats.avgGoalsFor);
+    report.AddAvg("Bot/GoalsAgainst", g_stats.avgGoalsAgainst);
+    report.AddAvg("Bot/Touches",      g_stats.avgTouches);
+    report.AddAvg("Bot/KickoffWins",  g_stats.avgKickoffWins);
+    report.AddAvg("Bot/Demos",        g_stats.avgDemos);
+    report.AddAvg("Bot/Saves",        g_stats.avgSaves);
+    report.AddAvg("Train/TotalSteps", (float)g_stats.totalSteps);
+    report.AddAvg("Train/PhaseSteps", (float)g_stats.phaseSteps);
 }
 
 int main(int argc, char* argv[]) {
-	std::srand((unsigned int)std::time(nullptr));
+    RocketSim::Init("collision_meshes");
 
-	fs::path projectRoot = fs::current_path();
-	fs::path checkpointPath = projectRoot / "checkpoints";
+    g_stats.currentPhase = DetectPhase();
+    PhaseConfig& phase   = PHASES[g_stats.currentPhase];
 
-	std::string collisionMeshesPath = "collision_meshes";
-	if (argc > 1)
-		collisionMeshesPath = argv[1];
+    printf("\n");
+    printf("============================================================\n");
+    printf("  TALON V1 — V4 Reward Structure\n");
+    printf("============================================================\n");
+    printf("  Phase:       %s\n",       phase.name);
+    printf("  Detected:    Phase %d\n", g_stats.currentPhase);
+    printf("  Goal:        %s\n",       phase.description);
+    printf("  Target:      %lld steps\n", phase.targetSteps);
+    printf("  Gamma:       %.3f\n",     phase.gamma);
+    printf("  Entropy:     %.2f\n",     phase.entropy);
+    printf("  Network:     1024x4 LEAKY_RELU + LayerNorm\n");
+    printf("  Mode:        1v1 only | Octane hitbox\n");
+    printf("============================================================\n\n");
 
-	RocketSim::Init(collisionMeshesPath);
+    LearnerConfig cfg = {};
 
-	int phase = DetectPhase(checkpointPath.string());
-	g_detectedPhase = phase;
+    cfg.deviceType  = LearnerDeviceType::GPU_CUDA;
+    cfg.tickSkip    = 8;
+    cfg.actionDelay = cfg.tickSkip - 1;
+    cfg.numGames    = 64;
 
-	RG_LOG(RG_DIVIDER);
-	RG_LOG("  TALOS V1 — Rocket League 1v1 Training Bot");
-	RG_LOG("  Detected Phase: " << phase);
-	RG_LOG("  Checkpoint folder: " << checkpointPath.string());
-	RG_LOG(RG_DIVIDER);
+    cfg.ppo.tsPerItr      = 50000;
+    cfg.ppo.miniBatchSize = 10000;
+    cfg.ppo.epochs        = 2;
+    cfg.ppo.gaeGamma      = phase.gamma;
+    cfg.ppo.gaeLambda     = 0.95f;
+    cfg.ppo.entropyScale  = phase.entropy;
+    cfg.ppo.policyLR      = 3e-4f;
+    cfg.ppo.criticLR      = 3e-4f;
 
-	LearnerConfig cfg = {};
+    cfg.ppo.sharedHead.layerSizes = { 1024, 1024, 1024, 1024 };
+    cfg.ppo.policy.layerSizes     = { 1024, 1024, 1024, 1024 };
+    cfg.ppo.critic.layerSizes     = { 1024, 1024, 1024, 1024 };
 
-	cfg.deviceType = LearnerDeviceType::GPU_CUDA;
-	cfg.numGames = 40;
-	cfg.tickSkip = 8;
-	cfg.actionDelay = cfg.tickSkip - 1;
-	cfg.checkpointFolder = checkpointPath.string();
-	cfg.tsPerSave = 500'000'000;
-	cfg.checkpointsToKeep = -1;
-	cfg.sendMetrics = false;
-	cfg.renderMode = false;
-	cfg.randomSeed = -1;
-	cfg.standardizeObs = true;
-	cfg.standardizeReturns = true;
-	cfg.addRewardsToMetrics = true;
+    cfg.ppo.sharedHead.activationType = ModelActivationType::LEAKY_RELU;
+    cfg.ppo.policy.activationType     = ModelActivationType::LEAKY_RELU;
+    cfg.ppo.critic.activationType     = ModelActivationType::LEAKY_RELU;
 
-	cfg.skillTracker.enabled = false;
+    cfg.ppo.sharedHead.addLayerNorm   = true;
+    cfg.ppo.policy.addLayerNorm       = true;
+    cfg.ppo.critic.addLayerNorm       = true;
 
-	cfg.ppo.tsPerItr = 50000;
-	cfg.ppo.batchSize = 50000;
-	cfg.ppo.miniBatchSize = 10000;
-	cfg.ppo.epochs = 2;
-	cfg.ppo.policyLR = 3e-4f;
-	cfg.ppo.criticLR = 3e-4f;
-	cfg.ppo.clipRange = 0.2f;
-	cfg.ppo.gaeLambda = 0.95f;
+    cfg.ppo.sharedHead.optimType      = ModelOptimType::ADAM;
+    cfg.ppo.policy.optimType          = ModelOptimType::ADAM;
+    cfg.ppo.critic.optimType          = ModelOptimType::ADAM;
 
-	cfg.ppo.sharedHead.layerSizes = { 256, 256 };
-	cfg.ppo.sharedHead.activationType = ModelActivationType::LEAKY_RELU;
-	cfg.ppo.sharedHead.optimType = ModelOptimType::ADAM;
-	cfg.ppo.sharedHead.addLayerNorm = true;
-	cfg.ppo.sharedHead.addOutputLayer = false;
+    cfg.checkpointFolder = "checkpoints";
+    cfg.tsPerSave        = 1000000;
 
-	cfg.ppo.policy.layerSizes = { 256, 256 };
-	cfg.ppo.policy.activationType = ModelActivationType::LEAKY_RELU;
-	cfg.ppo.policy.optimType = ModelOptimType::ADAM;
-	cfg.ppo.policy.addLayerNorm = true;
+    cfg.skillTracker.enabled = false;
+    cfg.sendMetrics = false;
 
-	cfg.ppo.critic.layerSizes = { 256, 256 };
-	cfg.ppo.critic.activationType = ModelActivationType::LEAKY_RELU;
-	cfg.ppo.critic.optimType = ModelOptimType::ADAM;
-	cfg.ppo.critic.addLayerNorm = true;
+    bool renderMode = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--render") {
+            renderMode = true;
+            break;
+        }
+    }
 
-	switch (phase) {
-		case 1:
-			cfg.ppo.gaeGamma = 0.990f;
-			cfg.ppo.entropyScale = 0.05f;
-			break;
-		case 2:
-			cfg.ppo.gaeGamma = 0.993f;
-			cfg.ppo.entropyScale = 0.07f;
-			break;
-		case 3:
-			cfg.ppo.gaeGamma = 0.995f;
-			cfg.ppo.entropyScale = 0.10f;
-			break;
-		case 4:
-			cfg.ppo.gaeGamma = 0.997f;
-			cfg.ppo.entropyScale = 0.08f;
-			break;
-		case 5:
-			cfg.ppo.gaeGamma = 0.998f;
-			cfg.ppo.entropyScale = 0.04f;
-			break;
-	}
+    if (renderMode) {
+        cfg.renderMode      = true;
+        cfg.renderTimeScale = 1.0f;
+    }
 
-	auto envCreateFunc = [phase](int /*index*/) -> EnvCreateResult {
-		EnvCreateResult result = {};
+    cfg.randomSeed = 123;
 
-		auto arena = Arena::Create(GameMode::SOCCAR);
-		arena->AddCar(Team::BLUE);
-		arena->AddCar(Team::ORANGE);
+    Learner* learner = new Learner(EnvCreateFunc, cfg, StepCallback);
+    learner->Start();
 
-		result.arena = arena;
-		result.rewards = BuildRewards(phase);
-		result.terminalConditions = BuildTerminals(phase);
-		result.stateSetter = BuildStateSetter(phase);
-		result.obsBuilder = new DefaultObsPadded(2);
-		result.actionParser = new DefaultAction();
+    printf("\n");
+    printf("============================================================\n");
+    printf("  TRAINING COMPLETE\n");
+    printf("============================================================\n");
+    printf("  Total Steps:    %lld\n",    g_stats.totalSteps);
+    printf("  Phase:          %d\n",      g_stats.currentPhase);
+    printf("  Goals For:      %.2f/ep\n", g_stats.avgGoalsFor);
+    printf("  Goals Against:  %.2f/ep\n", g_stats.avgGoalsAgainst);
+    printf("  Touches:        %.2f/ep\n", g_stats.avgTouches);
+    printf("  Kickoff Wins:   %.2f/ep\n", g_stats.avgKickoffWins);
+    printf("  Demos:          %.2f/ep\n", g_stats.avgDemos);
+    printf("  Saves:          %.2f/ep\n", g_stats.avgSaves);
+    printf("============================================================\n\n");
 
-		return result;
-	};
-
-	Learner* learner = new Learner(envCreateFunc, cfg, StepCallback);
-
-	RG_LOG("Loaded checkpoint. Starting training from Phase " << phase << "...");
-	RG_LOG(RG_DIVIDER);
-
-	learner->Start();
-
-	delete learner;
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
