@@ -176,7 +176,9 @@ new_block = f"""if(NOT CUDA_FOUND)
   set(CUDA_INCLUDE_DIRS "{cuda_root}/include")
   set(CUDA_CUDART_LIBRARY "{cuda_root}/lib64/libcudart.so")
   set(CAFFE2_USE_CUDA ON)
+  set(NVCC_GENCODE_FLAGS "-gencode arch=compute_60,code=sm_60" CACHE STRING "Kaggle P100 gencode")
   message(STATUS "Kaggle patch: CUDA manually set from {cuda_root}")
+  return()
 endif()"""
 c = c.replace(old_block, new_block)
 with open(path, 'w') as f:
@@ -194,7 +196,6 @@ cmake .. \
     -DTorch_DIR="$TORCH_DIR" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_CUDA_ARCHITECTURES=60 \
-    -DCMAKE_CUDA_STANDARD=17 \
     -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH" \
     -DCUDAToolkit_ROOT="$CUDA_PATH" \
     -DCUDA_NVCC_EXECUTABLE="$CUDA_PATH/bin/nvcc" \
