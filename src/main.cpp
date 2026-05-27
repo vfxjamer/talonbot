@@ -89,7 +89,7 @@ static PhaseConfig PHASES[] = {
 
 std::vector<WeightedReward> GetPhase1Rewards() {
     return std::vector<WeightedReward>{
-        WeightedReward(new V4GoalReward(80.0f, -60.0f),                             1.0f),
+        WeightedReward(new V4GoalReward(1.0f, -1.0f),                              1.0f),
         WeightedReward(new SaveReward(),                                             30.0f),
         WeightedReward(new DemoReward(),                                             10.0f),
         WeightedReward(new OwnGoalReward(),                                          50.0f),
@@ -105,7 +105,7 @@ std::vector<WeightedReward> GetPhase1Rewards() {
 
 std::vector<WeightedReward> GetPhase2Rewards() {
     return std::vector<WeightedReward>{
-        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new V4GoalReward(1.0f, -1.0f),                              1.0f),
         WeightedReward(new SaveReward(),                                             50.0f),
         WeightedReward(new EpicSaveReward(),                                         45.0f),
         WeightedReward(new AssistReward(),                                           30.0f),
@@ -131,7 +131,7 @@ std::vector<WeightedReward> GetPhase2Rewards() {
 
 std::vector<WeightedReward> GetPhase3Rewards() {
     return std::vector<WeightedReward>{
-        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new V4GoalReward(1.0f, -1.0f),                              1.0f),
         WeightedReward(new SaveReward(),                                             50.0f),
         WeightedReward(new EpicSaveReward(),                                         65.0f),
         WeightedReward(new AssistReward(),                                           50.0f),
@@ -163,7 +163,7 @@ std::vector<WeightedReward> GetPhase3Rewards() {
 
 std::vector<WeightedReward> GetPhase4Rewards() {
     return std::vector<WeightedReward>{
-        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new V4GoalReward(1.0f, -1.0f),                           1.0f),
         WeightedReward(new SaveReward(),                                             50.0f),
         WeightedReward(new EpicSaveReward(),                                         65.0f),
         WeightedReward(new AssistReward(),                                           50.0f),
@@ -196,7 +196,7 @@ std::vector<WeightedReward> GetPhase4Rewards() {
 
 std::vector<WeightedReward> GetPhase5Rewards() {
     return std::vector<WeightedReward>{
-        WeightedReward(new V4GoalReward(100.0f, -100.0f),                           1.0f),
+        WeightedReward(new V4GoalReward(1.0f, -1.0f),                           1.0f),
         WeightedReward(new SaveReward(),                                             50.0f),
         WeightedReward(new EpicSaveReward(),                                         65.0f),
         WeightedReward(new AssistReward(),                                           50.0f),
