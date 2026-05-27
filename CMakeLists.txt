@@ -33,4 +33,4 @@ get_filename_component(GIGALEARN_ABS "${GIGALEARN_ROOT}" ABSOLUTE)
 message(STATUS "GigaLearnCPP root: ${GIGALEARN_ABS}")
 
 add_subdirectory("${GIGALEARN_ABS}" GigaLearnCPP)
-target_link_libraries(TalonBot GigaLearnCPP)
+target_link_libraries(TalonBot GigaLearnCPP RocketSim)
